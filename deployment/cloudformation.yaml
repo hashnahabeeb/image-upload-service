@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Image Upload Service with API Gateway, Lambda, S3, and DynamoDB
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, prod, etc.)
+
+Resources:
+
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        !Sub
+        - "image-upload-bucket-${Environment}-${RandomSuffix}"
+        - RandomSuffix: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref "AWS::StackId"]]]]
+
+  MetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "ImageMetadata-${Environment}"
+      AttributeDefinitions:
+        - AttributeName: imageId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: imageId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "image-service-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: "ImageServicePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: !Sub "arn:aws:s3:::image-upload-bucket-${Environment}-*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource: !GetAtt MetadataTable.Arn
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource: "*"
+
+  UploadImageFunctionPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref UploadImageFunction
+      Principal: apigateway.amazonaws.com
+
+  ListImagesFunctionPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ListImagesFunction
+      Principal: apigateway.amazonaws.com
+
+  ViewImageFunctionPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ViewImageFunction
+      Principal: apigateway.amazonaws.com
+
+  DeleteImageFunctionPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DeleteImageFunction
+      Principal: apigateway.amazonaws.com
+
+  UploadImageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "upload-image-${Environment}"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: lambda-artifacts
+        S3Key: hh001/upload_image.zip
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          TABLE_NAME: !Ref MetadataTable
+
+  ListImagesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "list-images-${Environment}"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: lambda-artifacts
+        S3Key: hh001/list_images.zip
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          TABLE_NAME: !Ref MetadataTable
+
+  ViewImageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "view-image-${Environment}"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: lambda-artifacts
+        S3Key: hh001/view_image.zip
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          TABLE_NAME: !Ref MetadataTable
+
+  DeleteImageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "delete-image-${Environment}"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: lambda-artifacts
+        S3Key: hh001/delete_image.zip
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          TABLE_NAME: !Ref MetadataTable
+
+  ImageApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "image-api-${Environment}"
+
+  ImageApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ImageApi
+      ParentId: !GetAtt ImageApi.RootResourceId
+      PathPart: images
+
+  ImageByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ImageApi
+      ParentId: !Ref ImageApiResource
+      PathPart: "{id}"
+
+  UploadMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ImageApi
+      ResourceId: !Ref ImageApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadImageArn}/invocations
+          - UploadImageArn: !GetAtt UploadImageFunction.Arn
+
+  ListMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ImageApi
+      ResourceId: !Ref ImageApiResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListImageArn}/invocations
+          - ListImageArn: !GetAtt ListImagesFunction.Arn
+
+  ViewMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ImageApi
+      ResourceId: !Ref ImageByIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ViewImageArn}/invocations
+          - ViewImageArn: !GetAtt ViewImageFunction.Arn
+
+  DeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ImageApi
+      ResourceId: !Ref ImageByIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteImageArn}/invocations
+          - DeleteImageArn: !GetAtt DeleteImageFunction.Arn
+
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - UploadMethod
+      - ListMethod
+      - ViewMethod
+      - DeleteMethod
+    Properties:
+      RestApiId: !Ref ImageApi
+      StageName: prod
+
+  LambdaPermissions:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaInvokeApi
+      Roles:
+        - !Ref LambdaExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource:
+              - !GetAtt UploadImageFunction.Arn
+              - !GetAtt ListImagesFunction.Arn
+              - !GetAtt ViewImageFunction.Arn
+              - !GetAtt DeleteImageFunction.Arn
+
+Outputs:
+  ApiEndpoint:
+    Description: URL of the API Gateway
+    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/prod/images"

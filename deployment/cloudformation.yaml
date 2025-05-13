@@ -236,7 +236,7 @@ Resources:
       - DeleteMethod
     Properties:
       RestApiId: !Ref ImageApi
-      StageName: prod
+      StageName: !Ref Environment
 
   LambdaPermissions:
     Type: AWS::IAM::Policy
@@ -258,4 +258,4 @@ Resources:
 Outputs:
   ApiEndpoint:
     Description: URL of the API Gateway
-    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/prod/images"
+    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/images"

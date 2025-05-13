@@ -1,0 +1,133 @@
+openapi: 3.0.0
+info:
+  title: Image Management API
+  description: API for managing image uploads, retrieval, and deletion.
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /upload-image:
+    post:
+      summary: Upload an image
+      description: Upload an image to S3 and store metadata in DynamoDB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_data:
+                  type: string
+                  description: Base64 encoded image data
+                metadata:
+                  type: object
+                  description: Metadata for the image
+                  properties:
+                    user_id:
+                      type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+              required:
+                - image_data
+                - metadata
+      responses:
+        '201':
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  imageId:
+                    type: string
+        '500':
+          description: Internal server error
+
+  /list-images:
+    get:
+      summary: List images
+      description: Retrieve a list of images based on query parameters.
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter images by user ID
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter images by tags
+      responses:
+        '200':
+          description: List of images
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    image_url:
+                      type: string
+                    metadata:
+                      type: object
+        '500':
+          description: Internal server error
+
+  /view-image/{id}:
+    get:
+      summary: View an image
+      description: Generate a presigned URL to view an image.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the image
+      responses:
+        '200':
+          description: Presigned URL for the image
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  image_url:
+                    type: string
+        '500':
+          description: Internal server error
+
+  /delete-image/{id}:
+    delete:
+      summary: Delete an image
+      description: Delete an image from S3 and its metadata from DynamoDB.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID of the image
+      responses:
+        '200':
+          description: Image deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '500':
+          description: Internal server error

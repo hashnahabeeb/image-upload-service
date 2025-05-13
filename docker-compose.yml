@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: public.ecr.aws/localstack/localstack:3.0
+    ports:
+      - "4566:4566"   # LocalStack gateway
+      - "4510:4510"   # Lambda execution endpoint (optional)
+    environment:
+      - SERVICES=s3,lambda,dynamodb,cloudformation,apigateway,logs,iam
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=docker-reuse
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - "./.localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - localstack-net
+
+networks:
+  localstack-net:
+    driver: bridge

@@ -21,10 +21,7 @@ Resources:
   ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName:
-        !Sub
-        - "image-upload-bucket-${Environment}-${RandomSuffix}"
-        - RandomSuffix: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref "AWS::StackId"]]]]
+      BucketName: !Join [ '', [ 'image-upload-bucket', !Ref Environment ] ]
 
   MetadataTable:
     Type: AWS::DynamoDB::Table

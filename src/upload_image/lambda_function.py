@@ -1,28 +1,31 @@
 import os
 import boto3
-import base64
 import json
 import uuid
 
 s3_client = boto3.client('s3')
 dynamodb_client = boto3.client('dynamodb')
 
-
 def lambda_handler(event, context):
     bucket_name = os.environ['BUCKET_NAME']
     table_name = os.environ['TABLE_NAME']
     try:
         print("Received event: ", json.dumps(event, indent=2))
-        body = json.loads(event['body'])
-        image_data = body['image_data']
-        metadata = body['metadata']
+
+        content_type = event['headers']['Content-Type']
+        image_data = event['body']  # Binary data
+        metadata = json.loads(event['headers'].get('x-metadata', '{}'))
 
         image_id = str(uuid.uuid4())
         image_key = f"images/{image_id}.jpg"
 
-        # Decode and upload the image to S3
-        image_bytes = base64.b64decode(image_data)
-        s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_bytes)
+        # Upload the binary image data to S3
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=image_key,
+            Body=image_data,
+            ContentType=content_type
+        )
 
         # Save metadata to DynamoDB
         dynamodb_client.put_item(

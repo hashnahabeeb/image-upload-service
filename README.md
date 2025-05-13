@@ -13,13 +13,26 @@ This project provides a serverless API for managing image uploads, retrieval, an
 
 - **Language**: Python
 - **Framework**: AWS Lambda
-- **Services**: AWS S3, AWS DynamoDB
+- **Services**: AWS S3, AWS DynamoDB, AWS Lambda, AWS API Gateway
 - **API Documentation**: OpenAPI 3.0 (Swagger)
 
 ## Prerequisites
 
-- Python 3.8 or higher
+- Python 3.9 or higher
 - AWS CLI configured with appropriate permissions
 - `pip` for managing Python dependencies
 
 ## Setup
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd <repository-folder>
+   
+2. Testing
+Unit tests are provided for all Lambda functions.
+
+To run the tests:
+    ```bash
+        python -m unittest discover tests
+    ```

@@ -1,11 +1,16 @@
 import base64
-import os
-import boto3
 import json
+import os
+
+import boto3
+from boto3.dynamodb.types import TypeDeserializer
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
 dynamodb_client = boto3.client('dynamodb')
+
+deserializer = TypeDeserializer()
+deserialize = lambda item: {k: deserializer.deserialize(v) for k, v in item.items()}
 
 def lambda_handler(event, context):
     """
@@ -36,11 +41,10 @@ def lambda_handler(event, context):
             }
 
         # Extract metadata and S3 key
-        image_key = response['Items'][0]['imageKey']['S']
-
-        image_metadata = response['Items'][0]['metadata']['M']
-        image_name = image_metadata['image_name']['S']
-        content_type = image_metadata['content_type']['S']
+        item = deserialize(response['Items'][0])
+        image_key = item['imageKey']
+        image_name = item['metadata']['image_name']
+        content_type = item['metadata']['content_type']
 
         # Retrieve the image from S3
         s3_response = s3_client.get_object(Bucket=bucket_name, Key=image_key)

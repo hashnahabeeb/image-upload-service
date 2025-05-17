@@ -1,9 +1,17 @@
-import os
-import boto3
 import json
+import os
+
+import boto3
+from boto3.dynamodb.types import TypeDeserializer
 
 aws_region = boto3.session.Session().region_name
 dynamodb_client = boto3.client('dynamodb')
+deserializer = TypeDeserializer()
+
+
+def deserialize_item(item):
+    return {k: deserializer.deserialize(v) for k, v in item.items()}
+
 
 def lambda_handler(event, context):
     """
@@ -41,11 +49,11 @@ def lambda_handler(event, context):
     filter_expression = " AND ".join(filter_expressions) if filter_expressions else None
 
     try:
-        # Prepare the scan parameters
         scan_params = {
-            "TableName": table_name,
-            "ExpressionAttributeValues": expression_attribute_values
+            "TableName": table_name
         }
+        if expression_attribute_values:  # Only include if metadata or tags are present
+            scan_params["ExpressionAttributeValues"] = expression_attribute_values
 
         if filter_expression:
             scan_params["FilterExpression"] = filter_expression
@@ -58,12 +66,12 @@ def lambda_handler(event, context):
         # Build response
         images = [
             {
-                'selfLink': f'/images/{item["imageId"]["S"]}',
-                'image_url': f'https://{bucket_name}.s3.{aws_region}.amazonaws.com/{item["imageKey"]["S"]}',
-                'metadata': json.loads(item["metadata"]["M"]),
-                'tags': json.loads(item["tags"]["M"])
+                'selfLink': f'/images/{item["imageId"]}',
+                'image_url': f'https://{bucket_name}.s3.{aws_region}.amazonaws.com/{item["imageKey"]}',
+                'metadata': item.get("metadata", {}),
+                'tags': item.get("tags", {})
             }
-            for item in response['Items']
+            for item in map(deserialize_item, response['Items'])
         ]
 
         return {
@@ -76,3 +84,11 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
         }
+
+
+#event = {
+#    "queryStringParameters": {
+#        "metadata": "image_id:6860c39a-16d0-4e39-b4f8-bb077dd9183f"
+#    }
+#}
+#print(lambda_handler(event, None))

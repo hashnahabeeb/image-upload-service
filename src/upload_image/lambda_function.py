@@ -21,7 +21,6 @@ def lambda_handler(event, context):
     try:
         print("Received event: ", json.dumps(event, indent=2))
 
-        # Decode the binary data from the body
         is_base64_encoded = event.get('isBase64Encoded', False)
         image_data = event['body']
         if is_base64_encoded:

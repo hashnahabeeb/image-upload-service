@@ -1,12 +1,6 @@
 #!/bin/bash
 set -e
 
-STACK_NAME=image-upload-service
-ENV=dev
-TEMPLATE_FILE=deployment/cloudformation.yaml
-DEPLOY_BUCKET_NAME=lambda-artifacts2
-DEPLOY_KEY_PREFIX=hh001
-
 echo "Deploying CloudFormation stack: $STACK_NAME"
 
 if ! awslocal cloudformation create-stack \
@@ -27,4 +21,12 @@ if ! awslocal cloudformation create-stack \
       ParameterKey=Environment,ParameterValue=$ENV \
       ParameterKey=DeployBucket,ParameterValue=$DEPLOY_BUCKET_NAME \
       ParameterKey=DeployKeyPrefix,ParameterValue=$DEPLOY_KEY_PREFIX
+
+  echo "Waiting for stack update to complete..."
+  awslocal cloudformation wait stack-update-complete --stack-name $STACK_NAME
+else
+  echo "Waiting for stack creation to complete..."
+  awslocal cloudformation wait stack-create-complete --stack-name $STACK_NAME
 fi
+
+echo "Deployment complete."

@@ -20,7 +20,6 @@ def lambda_handler(event, context):
         image_id = str(uuid.uuid4())
         image_key = f"images/{image_id}.jpg"
 
-        # Decode and upload the image to S3
         image_bytes = base64.b64decode(image_data)
         s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_bytes)
 

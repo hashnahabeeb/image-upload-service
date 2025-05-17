@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-DEPLOY_BUCKET_NAME=lambda-artifacts2
-DEPLOY_KEY_PREFIX=hh001
-ARTIFACTS_DIR=artifacts
 LAMBDA_DIRS=("upload_image" "list_images" "view_image" "delete_image")
 
 echo "Creating S3 bucket: $DEPLOY_BUCKET_NAME"

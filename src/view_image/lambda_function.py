@@ -3,9 +3,9 @@ import os
 import boto3
 import json
 
-
 s3_client = boto3.client('s3')
 dynamodb_client = boto3.client('dynamodb')
+
 
 def lambda_handler(event, context):
     bucket_name = os.environ['BUCKET_NAME']
@@ -26,20 +26,24 @@ def lambda_handler(event, context):
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Image not found'})
             }
+        image_metadata = response['Items'][0]['metadata']['M']
+        image_key = response['Items'][0]['imageKey']['S']
+        image_name = image_metadata['image_name']['S']
+        content_type = image_metadata['content_type']['S']
 
         s3_response = s3_client.get_object(
             Bucket=bucket_name,
-            Key=f"images/{image_id}.jpg"
+            Key=image_key
         )
         image_data = s3_response['Body'].read()
 
         return {
             'statusCode': 200,
             'headers': {
-                'Content-Type': "image/jpeg",
-                'Content-Disposition': f'attachment; filename="{image_id}.jpg"'
+                'Content-Type': content_type,
+                'Content-Disposition': f'attachment; filename="{image_name}"'
             },
-            'body': base64.b64encode(image_data).decode('utf-8'),
+            'body': base64.b64encode(image_data),
             'isBase64Encoded': True
         }
 

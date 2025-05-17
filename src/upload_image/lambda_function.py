@@ -24,10 +24,10 @@ def add_tags(metadata, query_params):
     if raw_tags:
         tags = raw_tags.split(",")
         metadata["tags"] = {
-            'L': [
-                {'M': {'key': {'S': tag.split(":")[0].strip()}, 'value': {'S': tag.split(":")[1].strip()}}}
+            'M': {
+                tag.split(":")[0].strip(): {'S': tag.split(":")[1].strip()}
                 for tag in tags if ":" in tag
-            ]
+            }
         }
 
 
@@ -60,7 +60,7 @@ def lambda_handler(event, context):
         metadata = {
             "image_id": {'S': image_id},
             "content_type": {'S': content_type},
-            "tags": {'L': []}
+            "tags": {'M': {}}
         }
 
         # Add image name to metadata if provided

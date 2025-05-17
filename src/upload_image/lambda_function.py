@@ -1,6 +1,5 @@
 import os
 import boto3
-import base64
 import json
 import uuid
 
@@ -12,18 +11,29 @@ def lambda_handler(event, context):
     bucket_name = os.environ['BUCKET_NAME']
     table_name = os.environ['TABLE_NAME']
     try:
+        # Log the received event
         print("Received event: ", json.dumps(event, indent=2))
-        body = json.loads(event['body'])
-        image_data = body['image_data']
-        metadata = body['metadata']
 
+        # Decode the binary data from the body
+        image_data = event['body']
+        content_type = event['headers'].get('Content-Type') or event['headers'].get('content-type')
+        file_extension = content_type.split('/')[-1]
+
+        if not file_extension:
+            raise ValueError("Content-Type must specify a valid file extension (e.g., image/jpeg)")
+
+        # Generate a unique image ID and S3 key
         image_id = str(uuid.uuid4())
-        image_key = f"images/{image_id}.jpg"
+        image_key = f"images/{image_id}.{file_extension}"
 
-        image_bytes = base64.b64decode(image_data)
-        s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_bytes)
+        # Upload the binary image data to S3
+        s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_data, ContentType=content_type)
 
         # Save metadata to DynamoDB
+        metadata = {
+            "image_id": image_id,
+            "content_type": content_type
+        }
         dynamodb_client.put_item(
             TableName=table_name,
             Item={

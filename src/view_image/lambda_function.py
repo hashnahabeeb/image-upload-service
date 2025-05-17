@@ -36,8 +36,9 @@ def lambda_handler(event, context):
             }
 
         # Extract metadata and S3 key
-        image_metadata = response['Items'][0]['metadata']['M']
         image_key = response['Items'][0]['imageKey']['S']
+
+        image_metadata = response['Items'][0]['metadata']['M']
         image_name = image_metadata['image_name']['S']
         content_type = image_metadata['content_type']['S']
 

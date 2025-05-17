@@ -16,19 +16,17 @@ def get_header(event, key):
     return event['headers'].get(key) or event['headers'].get(key.lower())
 
 
-def add_tags(metadata, query_params):
+def parse_tags(query_params):
     """
-    Add tags to metadata from query parameters.
+    Parse tags from query parameters into a DynamoDB-compatible format.
     """
     raw_tags = query_params.get('tags', None)
     if raw_tags:
-        tags = raw_tags.split(",")
-        metadata["tags"] = {
-            'M': {
-                tag.split(":")[0].strip(): {'S': tag.split(":")[1].strip()}
-                for tag in tags if ":" in tag
-            }
+        return {
+            tag.split(":")[0].strip(): {'S': tag.split(":")[1].strip()}
+            for tag in raw_tags.split(",") if ":" in tag
         }
+    return {}
 
 
 def lambda_handler(event, context):
@@ -59,8 +57,7 @@ def lambda_handler(event, context):
         # Prepare metadata for DynamoDB
         metadata = {
             "image_id": {'S': image_id},
-            "content_type": {'S': content_type},
-            "tags": {'M': {}}
+            "content_type": {'S': content_type}
         }
 
         # Add image name to metadata if provided
@@ -69,7 +66,7 @@ def lambda_handler(event, context):
 
         # Add tags from query parameters
         query_params = event.get('queryStringParameters') or {}
-        add_tags(metadata, query_params)
+        tags = parse_tags(query_params)
 
         # Store metadata in DynamoDB
         dynamodb_client.put_item(
@@ -77,7 +74,8 @@ def lambda_handler(event, context):
             Item={
                 'imageId': {'S': image_id},
                 'imageKey': {'S': image_key},
-                'metadata': {'M': metadata}
+                'metadata': {'M': metadata},
+                'tags': {'M': tags}
             }
         )
 

@@ -2,20 +2,31 @@ import os
 import boto3
 import json
 import uuid
+import base64
 
 s3_client = boto3.client('s3')
 dynamodb_client = boto3.client('dynamodb')
+
+def parse_key_value_string(key_value_string):
+    """Parses a command-separated key:value string into a dictionary."""
+    try:
+        return dict(item.split(":") for item in key_value_string.split(","))
+    except ValueError:
+        raise ValueError("Invalid key:value format. Ensure the string is properly formatted.")
 
 
 def lambda_handler(event, context):
     bucket_name = os.environ['BUCKET_NAME']
     table_name = os.environ['TABLE_NAME']
     try:
-        # Log the received event
         print("Received event: ", json.dumps(event, indent=2))
 
         # Decode the binary data from the body
+        is_base64_encoded = event.get('isBase64Encoded', False)
         image_data = event['body']
+        if is_base64_encoded:
+            image_data = base64.b64decode(image_data)
+
         content_type = event['headers'].get('Content-Type') or event['headers'].get('content-type')
         file_extension = content_type.split('/')[-1]
 
@@ -29,17 +40,27 @@ def lambda_handler(event, context):
         # Upload the binary image data to S3
         s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_data, ContentType=content_type)
 
-        # Save metadata to DynamoDB
+        raw_metadata = event.get('queryStringParameters', {}).get('metadata', '')
+        metadata_dict = parse_key_value_string(raw_metadata)
         metadata = {
-            "image_id": image_id,
-            "content_type": content_type
+            key: {'S': value} for key, value in metadata_dict.items()
         }
+        metadata["image_id"] = {'S': image_id}
+        metadata["content_type"] = {'S': content_type}
+
+        # Parse tags (optional)
+        raw_tags = event.get('queryStringParameters', {}).get('tags', None)
+        if raw_tags:
+            tags = raw_tags.split(",")  # Split tags by comma
+            metadata["tags"] = {'L': [{'S': tag.strip()} for tag in tags]}  # Store as a list of strings
+
+
         dynamodb_client.put_item(
             TableName=table_name,
             Item={
                 'imageId': {'S': image_id},
                 'imageKey': {'S': image_key},
-                'metadata': {'S': json.dumps(metadata)}
+                'metadata': {'M': metadata}
             }
         )
 
@@ -53,3 +74,5 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
         }
+
+lambda_handler(None, None)

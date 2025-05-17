@@ -25,19 +25,22 @@ def lambda_handler(event, context):
         image_id = str(uuid.uuid4())
         image_key = f"images/{image_id}.{file_extension}"
 
+        # Extract X-Image-Name header if present
+        image_name = event['headers'].get('X-Image-Name') or event['headers'].get('x-image-name')
+
         # Upload the binary image data to S3
         s3_client.put_object(Bucket=bucket_name, Key=image_key, Body=image_data, ContentType=content_type)
 
         metadata = {
-            "image_id": {'S': "image_id"},
-            "content_type": {'S': "content_type"}
+            "image_id": {'S': image_id},
+            "content_type": {'S': content_type},
+            "tags": {'L': []}
         }
+        if image_name:
+            metadata["image_name"] = {'S': image_name}
 
-        raw_tags = event.get('queryStringParameters', {}).get('tags', None)
-        if raw_tags:
-            tags = raw_tags.split(",")
-            metadata["tags"] = {'L': [{'S': tag.strip()} for tag in tags]}
-
+        query_params = event.get('queryStringParameters') or {}
+        add_tags(metadata, query_params)
         dynamodb_client.put_item(
             TableName=table_name,
             Item={
@@ -56,4 +59,16 @@ def lambda_handler(event, context):
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
+        }
+
+
+def add_tags(metadata, query_params):
+    raw_tags = query_params.get('tags', None)
+    if raw_tags:
+        tags = raw_tags.split(",")
+        metadata["tags"] = {
+            'L': [
+                {'M': {'key': {'S': tag.split(":")[0].strip()}, 'value': {'S': tag.split(":")[1].strip()}}}
+                for tag in tags if ":" in tag
+            ]
         }

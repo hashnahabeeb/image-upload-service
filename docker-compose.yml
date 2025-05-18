@@ -5,14 +5,16 @@ services:
     image: public.ecr.aws/localstack/localstack:3.0
     ports:
       - "4566:4566"   # LocalStack gateway
-      - "4510:4510"   # Lambda execution endpoint (optional)
     environment:
-      - SERVICES=s3,lambda,dynamodb,cloudformation,apigateway,logs,iam
+      - SERVICES=s3,lambda,dynamodb,cloudformation,apigateway,iam,cloudwatch
       - DEBUG=1
-      - LAMBDA_EXECUTOR=docker-reuse
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
+      - HOSTNAME_EXTERNAL=localstack
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DOCKER_PLATFORM=linux/amd64
     volumes:
       - "./.localstack:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"

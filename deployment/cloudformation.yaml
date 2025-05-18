@@ -2,6 +2,17 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Image Upload Service with API Gateway, Lambda, S3, and DynamoDB
 
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 128
+    Environment:
+      Variables:
+        DeploymentHash: !Ref DeploymentHash
+        BUCKET_NAME: !Sub "${AWS::StackName}-storage-bucket-${Environment}"
+        TABLE_NAME: !Sub "${AWS::StackName}-metadata-${Environment}"
+
 Parameters:
   Environment:
     Type: String
@@ -9,24 +20,27 @@ Parameters:
     Description: Environment name (dev, prod, etc.)
   DeployBucket:
     Type: String
-    Default: tsoeng-fnxcpprovisioningdev-lambda-bucket #lambda-artifacts
+    Default: lambda-artifacts
     Description: Bucket name for Lambda artifacts
   DeployKeyPrefix:
     Type: String
     Default: hh001
     Description: Prefix for Lambda artifacts in the bucket
+  DeploymentHash:
+    Type: String
+    Default: 'initial'
+    Description: To force a new deployment.
 
 Resources:
-
   ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Join [ '', [ 'image-upload-bucket-', !Ref Environment ] ]
+      BucketName: !Sub "${AWS::StackName}-storage-bucket-${Environment}"
 
   MetadataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "ImageMetadata-${Environment}"
+      TableName: !Sub "${AWS::StackName}-metadata-${Environment}"
       AttributeDefinitions:
         - AttributeName: imageId
           AttributeType: S
@@ -35,10 +49,10 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-  LambdaExecutionRole:
+  ImageServiceLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "image-service-role-${Environment}"
+      RoleName: !Sub "${AWS::StackName}-lambda-role-${Environment}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -47,215 +61,115 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: "ImageServicePolicy"
+        - PolicyName: ImageServicePolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
-                  - s3:*
-                Resource: !Sub "arn:aws:s3:::image-upload-bucket-${Environment}*"
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${ImageBucket}"
+                  - !Sub "arn:aws:s3:::${ImageBucket}/*"
               - Effect: Allow
                 Action:
-                  - dynamodb:*
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
                 Resource: !GetAtt MetadataTable.Arn
-              - Effect: Allow
-                Action:
-                  - logs:*
-                Resource: "*"
-
-  UploadImageFunctionPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref UploadImageFunction
-      Principal: apigateway.amazonaws.com
-
-  ListImagesFunctionPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ListImagesFunction
-      Principal: apigateway.amazonaws.com
-
-  ViewImageFunctionPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ViewImageFunction
-      Principal: apigateway.amazonaws.com
-
-  DeleteImageFunctionPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref DeleteImageFunction
-      Principal: apigateway.amazonaws.com
 
   UploadImageFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "upload-image-${Environment}"
+      Role: !GetAtt ImageServiceLambdaRole.Arn
+      CodeUri:
+        Bucket: !Ref DeployBucket
+        Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'upload_image.zip' ] ]
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref DeployBucket
-        S3Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'upload_image.zip' ] ]
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref ImageBucket
-          TABLE_NAME: !Ref MetadataTable
+      Events:
+        Upload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ImageApi
+            Path: /images
+            Method: post
 
   ListImagesFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "list-images-${Environment}"
+      Role: !GetAtt ImageServiceLambdaRole.Arn
+      CodeUri:
+        Bucket: !Ref DeployBucket
+        Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'list_images.zip' ] ]
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref DeployBucket
-        S3Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'list_images.zip' ] ]
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref ImageBucket
-          TABLE_NAME: !Ref MetadataTable
+      Events:
+        List:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ImageApi
+            Path: /images
+            Method: get
 
   ViewImageFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "view-image-${Environment}"
+      Role: !GetAtt ImageServiceLambdaRole.Arn
+      CodeUri:
+        Bucket: !Ref DeployBucket
+        Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'view_image.zip' ] ]
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref DeployBucket
-        S3Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'view_image.zip' ] ]
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref ImageBucket
-          TABLE_NAME: !Ref MetadataTable
+      Events:
+        View:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ImageApi
+            Path: /images/{id}
+            Method: get
 
   DeleteImageFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "delete-image-${Environment}"
+      Role: !GetAtt ImageServiceLambdaRole.Arn
+      CodeUri:
+        Bucket: !Ref DeployBucket
+        Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'delete_image.zip' ] ]
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref DeployBucket
-        S3Key: !Join [ '/', [ !Ref DeployKeyPrefix, 'delete_image.zip' ] ]
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref ImageBucket
-          TABLE_NAME: !Ref MetadataTable
+      Events:
+        Delete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ImageApi
+            Path: /images/{id}
+            Method: delete
 
   ImageApi:
-    Type: AWS::ApiGateway::RestApi
+    Type: AWS::Serverless::Api
     Properties:
-      Name: !Sub "image-api-${Environment}"
-
-  ImageApiResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ImageApi
-      ParentId: !GetAtt ImageApi.RootResourceId
-      PathPart: images
-
-  ImageByIdResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ImageApi
-      ParentId: !Ref ImageApiResource
-      PathPart: "{id}"
-
-  UploadMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ImageApi
-      ResourceId: !Ref ImageApiResource
-      HttpMethod: POST
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadImageArn}/invocations
-          - UploadImageArn: !GetAtt UploadImageFunction.Arn
-
-  ListMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ImageApi
-      ResourceId: !Ref ImageApiResource
-      HttpMethod: GET
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListImageArn}/invocations
-          - ListImageArn: !GetAtt ListImagesFunction.Arn
-
-  ViewMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ImageApi
-      ResourceId: !Ref ImageByIdResource
-      HttpMethod: GET
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ViewImageArn}/invocations
-          - ViewImageArn: !GetAtt ViewImageFunction.Arn
-
-  DeleteMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ImageApi
-      ResourceId: !Ref ImageByIdResource
-      HttpMethod: DELETE
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteImageArn}/invocations
-          - DeleteImageArn: !GetAtt DeleteImageFunction.Arn
-
-  Deployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn:
-      - UploadMethod
-      - ListMethod
-      - ViewMethod
-      - DeleteMethod
-    Properties:
-      RestApiId: !Ref ImageApi
       StageName: !Ref Environment
-
-  LambdaPermissions:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: LambdaInvokeApi
-      Roles:
-        - !Ref LambdaExecutionRole
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Action: lambda:InvokeFunction
-            Resource:
-              - !GetAtt UploadImageFunction.Arn
-              - !GetAtt ListImagesFunction.Arn
-              - !GetAtt ViewImageFunction.Arn
-              - !GetAtt DeleteImageFunction.Arn
+      AlwaysDeploy: True
+      BinaryMediaTypes:
+        - "image/png"
+        - "image/jpeg"
+        - "text/html"
+      DefinitionBody:
+        'Fn::Transform':
+          Name: 'AWS::Include'
+          Parameters:
+            Location: !Join [ '/', [ 's3:/', !Ref DeployBucket, !Ref DeployKeyPrefix, 'deployment/swagger.yaml' ] ]
 
 Outputs:
   ApiEndpoint:
-    Description: URL of the API Gateway
-    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/images"
+    Description: API Gateway endpoint
+    Value: !Sub "https://${ImageApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref ImageApi

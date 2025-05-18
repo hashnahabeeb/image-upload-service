@@ -1,11 +1,13 @@
 #!/bin/bash
 set -e
 
-STACK_NAME=image-upload-service
-BUCKET_NAME=image-upload-bucket-dev
-
 echo "Emptying S3 bucket: $BUCKET_NAME"
-awslocal s3 rm s3://$BUCKET_NAME --recursive
+$AWS_CMD s3 rm s3://$BUCKET_NAME --recursive || true
 
 echo "Deleting CloudFormation stack: $STACK_NAME"
-awslocal cloudformation delete-stack --stack-name $STACK_NAME
+$AWS_CMD cloudformation delete-stack --stack-name $STACK_NAME
+
+echo "Waiting for CloudFormation stack deletion to complete..."
+$AWS_CMD cloudformation wait stack-delete-complete --stack-name $STACK_NAME
+
+echo "CloudFormation stack deleted successfully."

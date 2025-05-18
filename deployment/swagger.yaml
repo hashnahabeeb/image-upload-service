@@ -4,7 +4,7 @@ info:
   description: API for managing image uploads, retrieval, and deletion.
   version: 1.0.0
 servers:
-  - url: https://api.example.com
+  - url: https://dukos9ybg4.execute-api.us-east-1.amazonaws.com/dev
     description: Production server
 
 paths:
@@ -12,29 +12,32 @@ paths:
     post:
       summary: Upload an image
       description: Upload an image to S3 and store metadata in DynamoDB.
+      parameters:
+        - name: tags
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated key-value pairs for tags (e.g., "key1:value1,key2:value2").
+        - name: X-Image-Name
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Name of the image being uploaded.
       requestBody:
         required: true
         content:
-          application/json:
+          image/jpeg:
             schema:
-              type: object
-              properties:
-                image_data:
-                  type: string
-                  description: Base64 encoded image data
-                metadata:
-                  type: object
-                  description: Metadata for the image
-                  properties:
-                    user_id:
-                      type: string
-                    tags:
-                      type: array
-                      items:
-                        type: string
-              required:
-                - image_data
-                - metadata
+              type: string
+              format: binary
+              description: Binary image data to be uploaded (JPEG format).
+          image/png:
+            schema:
+              type: string
+              format: binary
+              description: Binary image data to be uploaded (PNG format).
       responses:
         '201':
           description: Image uploaded successfully
@@ -49,22 +52,28 @@ paths:
                     type: string
         '500':
           description: Internal server error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadImageFunction.Arn}/invocations"
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
     get:
       summary: List images
       description: Retrieve a list of images based on query parameters.
       parameters:
-        - name: user_id
+        - name: metadata
           in: query
           required: false
           schema:
             type: string
-          description: Filter images by user ID
+          description: Filter images by metadata in the format `key:value`.
         - name: tags
           in: query
           required: false
           schema:
             type: string
-          description: Filter images by tags
+          description: Filter images by tags in the format `key:value`.
       responses:
         '200':
           description: List of images
@@ -75,37 +84,76 @@ paths:
                 items:
                   type: object
                   properties:
+                    selfLink:
+                      type: string
+                      description: API link to the image resource.
                     image_url:
                       type: string
+                      description: URL to access the image in S3.
                     metadata:
                       type: object
+                      additionalProperties:
+                        type: string
+                      description: Metadata associated with the image.
+                    tags:
+                      type: object
+                      additionalProperties:
+                        type: string
+                      description: Tags associated with the image.
         '500':
           description: Internal server error
-
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListImagesFunction.Arn}/invocations"
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
 
   /images/{id}:
     get:
       summary: View an image
-      description: Generate a presigned URL to view an image.
+      description: Download an image from S3.
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
-          description: ID of the image
+          description: ID of the image to retrieve.
+        - name: isDownload
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ "true", "false" ]
+          description: If "true", the image will be returned as a downloadable file.
       responses:
         '200':
-          description: Presigned URL for the image
+          description: Image retrieved successfully
+          headers:
+            Content-Type:
+              description: MIME type of the image.
+              schema:
+                type: string
+            Content-Disposition:
+              description: Header to indicate file download (present if `isDownload=true`).
+              schema:
+                type: string
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  image_url:
-                    type: string
+                type: string
+                description: Base64-encoded image data.
+        '404':
+          description: Image not found
         '500':
           description: Internal server error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ViewImageFunction.Arn}/invocations"
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
     delete:
       summary: Delete an image
       description: Delete an image from S3 and its metadata from DynamoDB.
@@ -115,7 +163,7 @@ paths:
           required: true
           schema:
             type: string
-          description: ID of the image
+          description: ID of the image to delete.
       responses:
         '200':
           description: Image deleted successfully
@@ -126,5 +174,14 @@ paths:
                 properties:
                   message:
                     type: string
+                    description: Confirmation message for successful deletion.
+        '404':
+          description: Image not found
         '500':
           description: Internal server error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteImageFunction.Arn}/invocations"
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match

@@ -1,3 +1,5 @@
-.idea
+.idea/
 artifacts/
 .localstack/
+test-result/
+*.coverage

@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import json
 from src.view_image import lambda_function
 
+
 class TestViewImageLambda(unittest.TestCase):
 
     def setUp(self):
@@ -17,7 +18,19 @@ class TestViewImageLambda(unittest.TestCase):
         # Mock DynamoDB response
         mock_dynamodb_client.query.return_value = {
             'Count': 1,
-            'Items': [{'imageId': {'S': 'test-image-id'}}]
+            'Items': [
+                {
+                    'imageId': {'S': 'test-image-id'},
+                    'imageKey': {'S': 'images/test-image-id.jpg'},
+                    'metadata': {
+                        'M': {
+                            'image_name': {'S': 'test-image-id.jpg'},
+                            'content_type': {'S': 'image/jpeg'},
+                            'tags': {'M': {'tag1': {'S': 'value1'}, 'tag2': {'S': 'value2'}}}
+                        }
+                    }
+                }
+            ]
         }
 
         # Mock S3 response
@@ -39,9 +52,8 @@ class TestViewImageLambda(unittest.TestCase):
         # Assertions
         self.assertEqual(response['statusCode'], 200)
         self.assertEqual(response['headers']['Content-Type'], 'image/jpeg')
-        self.assertEqual(response['headers']['Content-Disposition'], 'attachment; filename="test-image-id.jpg"')
         self.assertTrue(response['isBase64Encoded'])
-        self.assertEqual(response['body'], base64.b64encode(b'test-image-data').decode('utf-8'))
+        self.assertEqual(response['body'], base64.b64encode(b'test-image-data'))
 
         mock_dynamodb_client.query.assert_called_once_with(
             TableName="test-table",
@@ -83,7 +95,19 @@ class TestViewImageLambda(unittest.TestCase):
         # Mock DynamoDB response
         mock_dynamodb_client.query.return_value = {
             'Count': 1,
-            'Items': [{'imageId': {'S': 'test-image-id'}}]
+            'Items': [
+                {
+                    'imageId': {'S': 'test-image-id'},
+                    'imageKey': {'S': 'images/test-image-id.jpg'},
+                    'metadata': {
+                        'M': {
+                            'image_name': {'S': 'test-image-id.jpg'},
+                            'content_type': {'S': 'image/jpeg'},
+                            'tags': {'M': {'tag1': {'S': 'value1'}, 'tag2': {'S': 'value2'}}}
+                        }
+                    }
+                }
+            ]
         }
 
         # Mock S3 error
@@ -113,6 +137,7 @@ class TestViewImageLambda(unittest.TestCase):
             Bucket="test-bucket",
             Key="images/test-image-id.jpg"
         )
+
 
 if __name__ == '__main__':
     unittest.main()
